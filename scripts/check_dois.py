@@ -21,6 +21,7 @@ Standard library only. No API key needed.
 """
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -71,13 +72,17 @@ def from_crossref(doi, email=None):
         " ".join(p for p in (a.get("given"), a.get("family")) if p) or a.get("name", "")
         for a in m.get("author", [])
     ]
+    # Crossref serves titles HTML-escaped ("Computers &amp; Education") and sometimes
+    # wrapped in JATS markup; neither belongs in a terminal comparison.
+    def clean(v):
+        return re.sub(r"<[^>]+>", "", html.unescape(v)) if isinstance(v, str) else v
     issued = m.get("issued", {}).get("date-parts", [[None]])[0]
     return status, {
         "registrant": "Crossref",
-        "title": (m.get("title") or [""])[0],
-        "authors": authors,
+        "title": clean((m.get("title") or [""])[0]),
+        "authors": [clean(a) for a in authors],
         "year": issued[0] if issued else None,
-        "container": (m.get("container-title") or [""])[0],
+        "container": clean((m.get("container-title") or [""])[0]),
         "volume": m.get("volume"),
         "issue": m.get("issue"),
         "pages": m.get("page"),
@@ -160,6 +165,14 @@ def main():
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--delay", type=float, default=0.2, help="seconds between requests")
     args = ap.parse_args()
+
+    # Windows consoles default to cp1252 and hard-crash on curly quotes and accented
+    # author names, which are ordinary in bibliographic metadata.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
     text = " ".join(args.dois)
     if args.file:
