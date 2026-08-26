@@ -35,6 +35,24 @@ Normalise each entry into these fields, leaving blanks where the citation is sil
 Number them in the order given and keep that numbering to the end. Every input entry
 gets an output row — no silent drops, no "and the rest look fine".
 
+Four things reliably go wrong at this stage, all of them observed on real theses:
+
+- **The reference section does not end where the document does.** Appendices,
+  questionnaires and consent forms follow it and will be swallowed as references. Stop
+  at the first `APPENDIX`, `QUESTIONNAIRE`, `INSTRUCTIONS` or `SECTION A:` heading. One
+  36-reference thesis parsed as 185 entries before this cut was applied.
+- **Word turns hyphens inside DOIs into en dashes.** `10.1007/978–3-031–34688–0` is what
+  gets stored, mixing U+2013 with real hyphens. Naive extraction truncates at the first
+  en dash, the stub 404s, and a genuine reference is reported as fabricated. Normalise
+  U+2010–U+2015, U+2212 and soft hyphens to `-` before matching anything.
+- **Organisational authors are references too.** WHO, UNICEF, UNESCO, the World Bank,
+  national ministries and statistics agencies do not match a `Surname, X.` pattern and
+  get dropped silently. In public-health and social-policy work they can be a fifth of
+  the list.
+- **A DOI can be truncated in the source itself.** `https://doi.org/10.1111/csp2.` with
+  the suffix missing is an author's copy-paste slip, not an invention. A suffix under
+  about five characters means "check the document", not "fabricated".
+
 If the input is a manuscript rather than a bare list, also note **what each reference is
 cited for** in the text. A citation that is real but does not support the claim made of
 it is its own finding, and is common in AI-drafted writing.
@@ -70,6 +88,21 @@ implementation.
 envelope, or rate-limits, retry it or fall back to another source. If a source genuinely
 cannot be reached, say so in the report and mark affected entries unverifiable — never
 score them as fabricated.
+
+This rule is easy to state and easy to break, so enforce it mechanically:
+
+- **Run a control query.** Before treating any empty result as evidence, query something
+  you know exists — `New England Journal of Medicine` for a journal check, a DOI you have
+  already resolved for a DOI check. If the control comes back empty, the API is failing,
+  not the reference. Re-run the control every 20 or so lookups on a long list.
+- **Rate limits arrive exactly when it matters.** OpenAlex starts returning HTTP 429
+  partway through a large bibliography — the moment you are making the most verdicts.
+  Sleep at least a second between calls, honour `Retry-After`, and back off on 429 and
+  5xx. In one run at four requests per second, checking a real thesis, every journal from
+  the *New England Journal of Medicine* down came back "not found".
+- **Never let an exception handler return an empty list.** A caught error and a genuine
+  zero-result must be distinguishable at the call site, or "the request failed" silently
+  becomes "the work does not exist".
 
 ## Step 3 — Compare, don't just match
 

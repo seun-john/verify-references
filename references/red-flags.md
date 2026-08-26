@@ -40,6 +40,23 @@ reference is any of:
 Say plainly what a human could do to settle it — check the publisher's site, the library
 catalogue, the ISBN, the author's own page.
 
+**Recognise this class from the citation string itself**, before any lookup. Missing
+these is how a tool ends up calling a famous textbook fake:
+
+| Cue in the citation | What it is |
+|---|---|
+| `(3rd ed.)`, `(8th ed.)`, a publisher name where the journal would be | a book |
+| `[Master's thesis, …]`, `[Doctoral dissertation, …]` | a thesis |
+| `[Working paper]`, `[Discussion paper]`, a series number | a working paper |
+| A URL to an institutional domain (`unhabitat.org`, `who.int`, `worldbank.org`) | a report |
+| `Cap.`, `Act`, `s.`, `v.`, a law-report citation | a statute or case |
+| An organisation as author, no volume or issue | grey literature |
+
+A reference carrying any of these gets UNVERIFIABLE on a miss, never a fabrication
+verdict — the open indexes simply do not carry it. Real examples seen in one run:
+Hair et al., *Multivariate Data Analysis (8th ed.)* and UN-Habitat's *World Cities
+Report 2016*, both absent from Crossref and OpenAlex, both entirely real.
+
 ### LIKELY FABRICATED
 All four must hold:
 

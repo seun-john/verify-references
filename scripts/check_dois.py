@@ -32,11 +32,24 @@ import urllib.request
 
 DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", re.IGNORECASE)
 TRAILING_JUNK = ".,;:)]}>\"'"
+
+# Word autocorrects hyphens inside DOIs into en dashes, so a pasted or extracted
+# reference list routinely contains "10.1007/978-3-031-34688-0" with one or more of
+# those hyphens replaced. Left alone the DOI is truncated at the first non-ASCII
+# dash, 404s, and gets reported as fabricated -- a false accusation against a real
+# citation, which is the worst thing this tool can do. Soft hyphens (inserted by
+# hyphenation) are deleted rather than replaced.
+DASH_FIX = str.maketrans({
+    "‐": "-", "‑": "-", "‒": "-", "–": "-",
+    "—": "-", "―": "-", "−": "-", "﹣": "-", "－": "-",
+    "­": "", "​": "",
+})
 UA = "verify-references/1.0 (https://github.com/; citation verification)"
 
 
 def extract_dois(text):
     """Pull DOIs out of arbitrary text, de-duplicated, order preserved."""
+    text = text.translate(DASH_FIX)
     seen, out = set(), []
     for raw in DOI_RE.findall(text):
         doi = raw.rstrip(TRAILING_JUNK)
@@ -47,17 +60,39 @@ def extract_dois(text):
     return out
 
 
-def fetch(url, accept="application/json"):
+def fetch(url, accept="application/json", tries=4):
+    """GET with backoff on rate limits and server errors.
+
+    Crucial for this tool: a 429 must never reach the caller looking like a
+    "not found". Rate limits arrive exactly when a large bibliography is being
+    checked, which is precisely when a wrong verdict does the most damage.
+    """
     req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": UA})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return resp.status, json.loads(resp.read().decode("utf-8", "replace"))
-    except urllib.error.HTTPError as e:
-        return e.code, None
-    except urllib.error.URLError as e:
-        return None, {"error": str(e.reason)}
-    except json.JSONDecodeError:
-        return None, {"error": "response was not JSON"}
+    last = None
+    for attempt in range(tries):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.status, json.loads(resp.read().decode("utf-8", "replace"))
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 502, 503, 504) and attempt < tries - 1:
+                wait = e.headers.get("Retry-After") if e.headers else None
+                try:
+                    wait = float(wait)
+                except (TypeError, ValueError):
+                    wait = 2.0 * (2 ** attempt)
+                time.sleep(min(wait, 30.0))
+                last = e.code
+                continue
+            return e.code, None
+        except urllib.error.URLError as e:
+            last = str(e.reason)
+            if attempt < tries - 1:
+                time.sleep(2.0 * (2 ** attempt))
+                continue
+            return None, {"error": last}
+        except json.JSONDecodeError:
+            return None, {"error": "response was not JSON"}
+    return (last if isinstance(last, int) else None), None
 
 
 def from_crossref(doi, email=None):
@@ -113,6 +148,17 @@ def from_datacite(doi):
     }
 
 
+def looks_truncated(doi):
+    """A DOI cut short by line-wrapping or a copy-paste slip, not an invented one.
+
+    Real suffixes are rarely this short. Reporting these as unregistered would
+    accuse a genuine reference, so they get their own status and a prompt to
+    check the source document.
+    """
+    suffix = doi.split("/", 1)[1] if "/" in doi else ""
+    return len(suffix) < 5
+
+
 def check(doi, email=None):
     status, meta = from_crossref(doi, email)
     if meta:
@@ -122,6 +168,8 @@ def check(doi, email=None):
         if ds_meta:
             return {"doi": doi, "status": "REGISTERED", "http": ds_status, **ds_meta}
         if ds_status == 404:
+            if looks_truncated(doi):
+                return {"doi": doi, "status": "TRUNCATED?", "http": 404}
             return {"doi": doi, "status": "NOT REGISTERED", "http": 404}
     if status is None:
         return {"doi": doi, "status": "NETWORK ERROR", "http": None}
@@ -136,6 +184,7 @@ def render(results):
         mark = {
             "REGISTERED": "ok  ",
             "NOT REGISTERED": "GONE",
+            "TRUNCATED?": "CUT ",
             "NETWORK ERROR": "err ",
             "UNCLEAR": "?   ",
         }.get(r["status"], "?   ")
@@ -151,8 +200,16 @@ def render(results):
         print()
     print("-- " + ", ".join(f"{v} {k.lower()}" for k, v in sorted(verdicts.items())))
     if verdicts.get("NOT REGISTERED"):
-        print("\nA DOI that is not registered was almost certainly invented.")
-    print("A registered DOI proves the DOI is real, NOT that the citation matches it.")
+        print("\nAn unregistered DOI is strong evidence of invention -- but read the source")
+        print("text first. Word autocorrects hyphens inside DOIs into en dashes, and a DOI")
+        print("split over a line break loses characters; both look identical to a fake.")
+    if verdicts.get("TRUNCATED?"):
+        print("\nTRUNCATED? = the suffix is too short to be a real DOI. Nearly always a")
+        print("copy-paste or line-wrap slip in the document, NOT a fabricated reference.")
+    if verdicts.get("UNCLEAR") or verdicts.get("NETWORK ERROR"):
+        print("\nSome lookups did not complete. UNCLEAR and NETWORK ERROR mean 'not checked'")
+        print("-- never treat them as evidence that a reference does not exist.")
+    print("\nA registered DOI proves the DOI is real, NOT that the citation matches it.")
     print("Compare the metadata above against what each citation claims.")
 
 
