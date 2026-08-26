@@ -70,6 +70,14 @@ Useful fields on a work: `display_name`, `authorships`, `publication_year`,
 `title.search` is stricter than `search`; try both before concluding nothing is there.
 Roughly 100k calls/day, no key.
 
+**OpenAlex will lock you out for hours, not seconds.** Sustained bursts earn a 429 with
+`Retry-After` measured in *tens of thousands of seconds* — one observed lockout was
+38,633 seconds, close to eleven hours, and it applies to the whole IP. Keep to about one
+request per second. If it does lock you out, do not wait it out and do not treat the
+silence as absence: fall back to **Crossref plus Europe PMC**, which are separate
+providers with separate limits and together cover most of what OpenAlex would have
+answered. Say in the report which sources actually ran.
+
 ## Europe PMC — biomedical (PubMed content and more)
 
 ```bash
