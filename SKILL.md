@@ -69,8 +69,9 @@ stays tractable. Exact calls, and the traps in each source, are in
 3. **Distinctive phrase from the title**, in case of transcription drift.
 4. **Author + year + topic**, to catch a real paper cited under a mangled title.
 5. **Grey literature** (CORE) for theses, preprints, institutional reports.
-6. **Registries** — ClinicalTrials.gov for NCT numbers, Open Library or Google Books for
-   books and chapters.
+6. **Books and monographs** — `scripts/check_books.py` queries Open Library and
+   Crossref's monograph filter, which is where books actually live; Crossref and
+   Europe PMC alone will miss even famous ones. Also ClinicalTrials.gov for NCT numbers.
 7. **Author output check**, for entries still missing: search the first author's name
    alone. A prolific real author with no work resembling the cited title is meaningful;
    an author with no indexed output at all is not — they may simply not be indexed.

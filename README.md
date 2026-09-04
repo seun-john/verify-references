@@ -75,21 +75,32 @@ Hand it a pasted list, a `.bib` or `.ris` file, or a whole manuscript. Given a m
 it also checks whether each source actually supports the sentence citing it — a real
 paper cited for something it never said is its own kind of problem.
 
-### DOIs on their own
+### The bundled scripts
 
-The bundled script batch-checks DOIs without Claude in the loop:
+Both run standalone, without Claude in the loop.
 
 ```bash
 python scripts/check_dois.py --file bibliography.txt
 ```
 
-It scrapes DOIs out of prose, so you can pipe a whole reference list at it. Exit code 1
-if any DOI is unregistered, which makes it usable as a pre-submission check in CI.
+Scrapes DOIs out of prose, so you can pipe a whole reference list at it. Exit code 1 if
+any DOI is unregistered, which makes it usable as a pre-submission check in CI.
+
+```bash
+python scripts/check_books.py --file bibliography.txt
+```
+
+Picks the book-like entries out of a reference list and checks them against Open Library
+and Crossref's monograph index. Books are the blind spot in citation checking — Crossref
+and PubMed barely carry them, so a journal-only checker reports even Bronfenbrenner's
+*The ecology of human development* as missing. Matching requires the author's surname on
+the catalogue record, and tolerates the subtitle and edition-year drift that breaks naive
+title comparison.
 
 ## Sources
 
-Crossref · OpenAlex · DataCite · Europe PMC (PubMed content) · CORE ·
-ClinicalTrials.gov · Unpaywall · Open Library · Google Books
+Crossref · OpenAlex · DataCite · Europe PMC (PubMed content) · CORE · Open Library ·
+ClinicalTrials.gov · Unpaywall · Google Books
 
 All free and open. No key required for any of them. Google Scholar is deliberately not
 used: it has no public API and forbids scraping.
