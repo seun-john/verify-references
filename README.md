@@ -97,6 +97,10 @@ and PubMed barely carry them, so a journal-only checker reports even Bronfenbren
 the catalogue record, and tolerates the subtitle and edition-year drift that breaks naive
 title comparison.
 
+**Coverage.** Both scripts end by saying how much they could decide, for example `Coverage: decided 41 of 48 DOIs; 7 could not be checked (network_error 7)`. In `--json` mode the line goes to stderr so stdout stays JSON. `check_dois.py --json` still prints a bare list; add `--with-coverage` to get `{"coverage": ..., "results": [...]}` instead. `check_books.py --json` has a `coverage` key next to `results`. A DOI is decided when a registry answered clearly (registered, not registered, or truncated); `UNCLEAR` and `NETWORK ERROR` are undecided. A book is decided when a catalogue answered (found, or not in the catalogues, which is a prompt to look, not a verdict); a failed lookup or a title too short to search is undecided. Entries that do not look like books are not checked unless you pass `--all`, and the notes say how many were left out. `--min-coverage PCT` exits 3 when fewer than PCT percent were decided; for DOIs an unregistered DOI (exit 1) still wins.
+
+The tests in `tests/` run offline: `python -m pytest tests`.
+
 ## Sources
 
 Crossref · OpenAlex · DataCite · Europe PMC (PubMed content) · CORE · Open Library ·

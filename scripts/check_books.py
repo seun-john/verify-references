@@ -270,6 +270,41 @@ def check(cited, live):
     return {"status": "NOT IN CATALOGUES", "match": None, "searched": tried}
 
 
+def coverage_block(rows, title_too_short=0, not_book_like=0):
+    """The shared coverage block. A reference is decided when a catalogue answered for it
+    (FOUND or NOT IN CATALOGUES); undecided when every lookup failed, or its title was too
+    short to search for. Entries that do not look like books are not items: they are noted."""
+    reasons = {}
+    for r in rows:
+        if r["res"]["status"] == "LOOKUP FAILED":
+            reasons["lookup_failed"] = reasons.get("lookup_failed", 0) + 1
+    if title_too_short:
+        reasons["title_too_short"] = title_too_short
+    items = len(rows) + title_too_short
+    undecided = sum(reasons.values())
+    notes = ["NOT IN CATALOGUES is a prompt to look, not a verdict"]
+    if not_book_like:
+        notes.append("%d entr%s did not look like a book and %s not checked (use --all)"
+                     % (not_book_like, "y" if not_book_like == 1 else "ies",
+                        "was" if not_book_like == 1 else "were"))
+    return {"unit": "references", "items": items, "decided": items - undecided,
+            "undecided": undecided, "reasons": dict(sorted(reasons.items())),
+            "suppressed": 0, "notes": notes}
+
+
+def describe_coverage(block):
+    text = "decided %d of %d %s" % (block["decided"], block["items"], block["unit"])
+    if block["undecided"]:
+        why = ", ".join("%s %d" % (k, v) for k, v in
+                        sorted(block["reasons"].items(), key=lambda kv: -kv[1]))
+        text += "; %d could not be checked (%s)" % (block["undecided"], why)
+    return text
+
+
+def decided_share(block):
+    return round(100.0 * block["decided"] / block["items"], 1) if block["items"] else None
+
+
 def render(rows, live):
     up = [k for k, v in live.items() if v] or ["NONE"]
     print("catalogues answering: " + ", ".join(up))
@@ -309,6 +344,8 @@ def main():
     ap.add_argument("--all", action="store_true",
                     help="check every entry, not just ones that look like books")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--min-coverage", type=float, metavar="PCT",
+                    help="exit 3 if fewer than PCT percent of the references were decided")
     args = ap.parse_args()
 
     for stream in (sys.stdout, sys.stderr):
@@ -325,12 +362,15 @@ def main():
         lines += sys.stdin.read().splitlines()
 
     cands = []
+    not_book_like = 0
     for l in lines:
         l = l.strip()
         if len(l) < 30 or not ENTRY.match(l):
             continue
         if args.all or BOOK_CUES.search(l):
             cands.append(l)
+        else:
+            not_book_like += 1
     if not cands:
         sys.exit("No book-like references found. Pass --all to check every entry.")
 
@@ -343,18 +383,29 @@ def main():
                  "than reporting false absences.")
 
     rows = []
+    title_too_short = 0
     for raw in cands:
         cited = parse(raw)
         if len(cited["title"]) < 8:
+            title_too_short += 1
             continue
         rows.append({"cited": cited, "res": check(cited, live)})
 
+    block = coverage_block(rows, title_too_short, not_book_like)
     if args.json:
-        json.dump({"sources_live": live, "results": rows}, sys.stdout,
+        json.dump({"sources_live": live, "coverage": block, "results": rows}, sys.stdout,
                   indent=2, ensure_ascii=False)
         print()
+        print("coverage: " + describe_coverage(block), file=sys.stderr)
     else:
         render(rows, live)
+        print("\nCoverage: " + describe_coverage(block))
+        for note in block["notes"]:
+            print("  note: " + note)
+    share = decided_share(block)
+    if args.min_coverage is not None and (share is None or share < args.min_coverage):
+        print("Coverage is below --min-coverage %g." % args.min_coverage, file=sys.stderr)
+        sys.exit(3)
     sys.exit(0)
 
 

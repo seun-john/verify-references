@@ -176,6 +176,35 @@ def check(doi, email=None):
     return {"doi": doi, "status": "UNCLEAR", "http": status}
 
 
+def coverage_block(results):
+    """The shared coverage block. A DOI is decided when a registry answered clearly:
+    REGISTERED, NOT REGISTERED, or TRUNCATED? (the suffix is too short to be real).
+    UNCLEAR and NETWORK ERROR mean 'not checked' and are undecided."""
+    reasons = {}
+    for r in results:
+        key = {"UNCLEAR": "lookup_unclear", "NETWORK ERROR": "network_error"}.get(r["status"])
+        if key:
+            reasons[key] = reasons.get(key, 0) + 1
+    undecided = sum(reasons.values())
+    return {"unit": "DOIs", "items": len(results), "decided": len(results) - undecided,
+            "undecided": undecided, "reasons": dict(sorted(reasons.items())),
+            "suppressed": 0,
+            "notes": ["a registered DOI shows the DOI is real, not that the citation matches it"]}
+
+
+def describe_coverage(block):
+    text = "decided %d of %d %s" % (block["decided"], block["items"], block["unit"])
+    if block["undecided"]:
+        why = ", ".join("%s %d" % (k, v) for k, v in
+                        sorted(block["reasons"].items(), key=lambda kv: -kv[1]))
+        text += "; %d could not be checked (%s)" % (block["undecided"], why)
+    return text
+
+
+def decided_share(block):
+    return round(100.0 * block["decided"] / block["items"], 1) if block["items"] else None
+
+
 def render(results):
     width = max([len(r["doi"]) for r in results] + [3])
     verdicts = {}
@@ -220,6 +249,12 @@ def main():
     ap.add_argument("--file", help="file of DOIs or prose containing them")
     ap.add_argument("--email", help="contact email for Crossref's polite pool")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--with-coverage", action="store_true",
+                    help="with --json, print {\"coverage\": ..., \"results\": [...]} instead of "
+                         "the bare list")
+    ap.add_argument("--min-coverage", type=float, metavar="PCT",
+                    help="exit 3 if fewer than PCT percent of the DOIs were decided and none "
+                         "was NOT REGISTERED")
     ap.add_argument("--delay", type=float, default=0.2, help="seconds between requests")
     args = ap.parse_args()
 
@@ -248,13 +283,23 @@ def main():
         if i + 1 < len(dois):
             time.sleep(args.delay)
 
+    block = coverage_block(results)
     if args.json:
-        json.dump(results, sys.stdout, indent=2)
+        json.dump({"coverage": block, "results": results} if args.with_coverage else results,
+                  sys.stdout, indent=2)
         print()
+        print("coverage: " + describe_coverage(block), file=sys.stderr)
     else:
         render(results)
+        print("\nCoverage: " + describe_coverage(block))
 
-    sys.exit(1 if any(r["status"] == "NOT REGISTERED" for r in results) else 0)
+    if any(r["status"] == "NOT REGISTERED" for r in results):
+        sys.exit(1)
+    share = decided_share(block)
+    if args.min_coverage is not None and (share is None or share < args.min_coverage):
+        print("Coverage is below --min-coverage %g." % args.min_coverage, file=sys.stderr)
+        sys.exit(3)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
