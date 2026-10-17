@@ -77,7 +77,7 @@ paper cited for something it never said is its own kind of problem.
 
 ### The bundled scripts
 
-Both run standalone, without Claude in the loop.
+All three run standalone, without Claude in the loop.
 
 ```bash
 python scripts/check_dois.py --file bibliography.txt
@@ -97,7 +97,26 @@ and PubMed barely carry them, so a journal-only checker reports even Bronfenbren
 the catalogue record, and tolerates the subtitle and edition-year drift that breaks naive
 title comparison.
 
-**Coverage.** Both scripts end by saying how much they could decide, for example `Coverage: decided 41 of 48 DOIs; 7 could not be checked (network_error 7)`. In `--json` mode the line goes to stderr so stdout stays JSON. `check_dois.py --json` still prints a bare list; add `--with-coverage` to get `{"coverage": ..., "results": [...]}` instead. `check_books.py --json` has a `coverage` key next to `results`. A DOI is decided when a registry answered clearly (registered, not registered, or truncated); `UNCLEAR` and `NETWORK ERROR` are undecided. A book is decided when a catalogue answered (found, or not in the catalogues, which is a prompt to look, not a verdict); a failed lookup or a title too short to search is undecided. Entries that do not look like books are not checked unless you pass `--all`, and the notes say how many were left out. `--min-coverage PCT` exits 3 when fewer than PCT percent were decided; for DOIs an unregistered DOI (exit 1) still wins.
+```bash
+python scripts/check_titles.py --file bibliography.txt
+```
+
+Looks up the entries that have no DOI (articles without one, reports, theses, pre-1970
+work), by title, in Crossref and OpenAlex, and compares the best record with the citation:
+first author, year, and the journal of an article or the institution of a thesis. It reports
+`FOUND` (everything comparable agrees), `FOUND_DIFFERS` (the work exists but the citation
+disagrees, and says where), `FOUND_REVIEW` (same title and author, but the year of a book or
+chapter differs, which editions and reprints explain as often as an error), `AMBIGUOUS`
+(several works share the title and none is by the author cited), `NOT FOUND` and
+`NETWORK ERROR`. The last three are undecided: `NOT FOUND` is a prompt to look elsewhere, never
+a verdict, because open indexes miss books, theses, reports and much else. A title match is
+accepted only when the title is very close, and a citation with only a publisher or institution
+is never matched to a journal article or chapter that shares its title. Entries should look like
+`Author, A. (2020). Title. Journal, 12(3), 45-67.` (APA style); entries with a DOI are skipped
+unless you pass `--all`. It stops if neither index answers a control query, rather than report
+false absences.
+
+**Coverage.** All three scripts end by saying how much they could decide, for example `Coverage: decided 41 of 48 DOIs; 7 could not be checked (network_error 7)`. In `--json` mode the line goes to stderr so stdout stays JSON. `check_dois.py --json` still prints a bare list; add `--with-coverage` to get `{"coverage": ..., "results": [...]}` instead. `check_books.py --json` and `check_titles.py --json` have a `coverage` key next to `results`. A DOI is decided when a registry answered clearly (registered, not registered, or truncated); `UNCLEAR` and `NETWORK ERROR` are undecided. A book is decided when a catalogue answered (found, or not in the catalogues, which is a prompt to look, not a verdict); a failed lookup or a title too short to search is undecided. Entries that do not look like books are not checked unless you pass `--all`, and the notes say how many were left out. `--min-coverage PCT` exits 3 when fewer than PCT percent were decided; for DOIs an unregistered DOI (exit 1) still wins.
 
 The tests in `tests/` run offline: `python -m pytest tests`.
 
@@ -120,6 +139,11 @@ Worth being honest about:
   does not assess whether the work is any good, or whether the field agrees with it.
 - Coverage is the coverage of open metadata. Books, chapters, standards, legal and
   regional-language sources land in UNVERIFIABLE more often than they should.
+- OpenAlex limits keyless use to a daily budget shared by everyone on the same network
+  address. When it is spent (HTTP 429 with a long `Retry-After`), `check_titles.py` stops
+  waiting, uses Crossref alone, and says so; matches that need OpenAlex come back
+  `NOT FOUND` or `NETWORK ERROR`, not wrong.
+- Publishers are not compared, so a book cited under the wrong publisher is not caught.
 - Claim-checking against a manuscript needs the full text to be reachable. Behind a
   paywall, it can compare against the abstract only, and will say so.
 - It reports evidence, not intent. "Not found in any index searched" is a finding;

@@ -78,6 +78,10 @@ stays tractable. Exact calls, and the traps in each source, are in
 
 `scripts/check_dois.py` batches step 1 over a whole list in one go; use it when there are
 more than a handful of DOIs.
+`scripts/check_titles.py` runs steps 2-4 for entries that have no DOI: it searches Crossref and
+OpenAlex by title and compares first author, year and journal. Its `FOUND_DIFFERS` is evidence
+of a mis-citation; its `NOT FOUND`, `AMBIGUOUS` and `FOUND_REVIEW` are not verdicts, so carry on
+with the steps above for those.
 
 **Tooling.** These are all open HTTP APIs, callable with `curl` or WebFetch and needing
 no key. If the environment happens to expose literature-search MCP tools (OpenAlex,
