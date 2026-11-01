@@ -48,13 +48,13 @@ the fabrication verdicts require positive evidence, spelled out in the report.
 Clone into your personal skills directory, and it is available in every project:
 
 ```bash
-git clone https://github.com/<you>/verify-references ~/.claude/skills/verify-references
+git clone https://github.com/seun-john/verify-references ~/.claude/skills/verify-references
 ```
 
 Or into a single project, to share it with a repo via version control:
 
 ```bash
-git clone https://github.com/<you>/verify-references .claude/skills/verify-references
+git clone https://github.com/seun-john/verify-references .claude/skills/verify-references
 ```
 
 Claude Code picks it up on the next session. Nothing else to configure: every data source
